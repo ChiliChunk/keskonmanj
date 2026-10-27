@@ -16,12 +16,15 @@ const DRAG_TYPE = "application/x-keskonmanj-dish";
 interface Props {
   dishes: Dish[];
   plan: WeekPlan;
-  onPlanChange: (plan: WeekPlan) => void;
+  weeks: number;
+  onPlanChange: (plan: WeekPlan, weeks: number) => void;
   onSave: (dish: DishDraft, patch?: Partial<Dish>) => Promise<Dish | null>;
   onDelete: (id: string) => Promise<void>;
 }
 
-export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Props) {
+const MAX_WEEKS = 8;
+
+export function PlannedView({ dishes, plan, weeks, onPlanChange, onSave, onDelete }: Props) {
   // Le glisser-déposer HTML ne marche pas au doigt sur téléphone : on peut
   // aussi toucher un plat pour le sélectionner, puis toucher un créneau.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -31,7 +34,14 @@ export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Pr
     const next = { ...plan };
     if (entry) next[key] = entry;
     else delete next[key];
-    onPlanChange(next);
+    onPlanChange(next, weeks);
+  }
+
+  function removeLastWeek() {
+    const keys = DAYS.flatMap((day) => MEALS.map((meal) => slotKey(weeks, day, meal)));
+    const filled = keys.filter((key) => plan[key]).length;
+    if (filled > 0 && !window.confirm(`Retirer la semaine ${weeks} et ses ${filled} créneau(x) remplis ?`)) return;
+    onPlanChange(Object.fromEntries(Object.entries(plan).filter(([key]) => !keys.includes(key))), weeks - 1);
   }
 
   function placements(dishId: string): number {
@@ -42,13 +52,13 @@ export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Pr
     <div className="stack">
       <section className="card">
         <div className="row between">
-          <h2>La semaine</h2>
+          <h2>{weeks > 1 ? "Les semaines" : "La semaine"}</h2>
           {Object.keys(plan).length > 0 && (
             <button
               className="link"
-              onClick={() => window.confirm("Vider tous les créneaux de la semaine ?") && onPlanChange({})}
+              onClick={() => window.confirm("Vider tous les créneaux ?") && onPlanChange({}, weeks)}
             >
-              Vider la semaine
+              Tout vider
             </button>
           )}
         </div>
@@ -89,35 +99,55 @@ export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Pr
           </p>
         )}
 
-        <div className="week">
-          <span />
-          {MEALS.map((meal) => (
-            <span key={meal} className="week-head">
-              {meal}
-            </span>
-          ))}
-          {DAYS.map((day) => (
-            <WeekRow key={day} day={day}>
-              {MEALS.map((meal) => {
-                const key = slotKey(day, meal);
-                const entry = plan[key];
-                return (
-                  <Slot
-                    key={key}
-                    label={`${day} ${meal.toLowerCase()}`}
-                    entry={entry}
-                    dish={entry && "dishId" in entry ? byId.get(entry.dishId) : undefined}
-                    selectedId={selectedId}
-                    onChange={(next) => {
-                      setSlot(key, next);
-                      if (next && "dishId" in next) setSelectedId(null);
-                    }}
-                  />
-                );
-              })}
-            </WeekRow>
-          ))}
-        </div>
+        {Array.from({ length: weeks }, (_, i) => i + 1).map((week) => (
+          <div key={week} className="week-block">
+            {weeks > 1 && (
+              <div className="week-title">
+                <h3>Semaine {week}</h3>
+                {week === weeks && (
+                  <button className="link" onClick={removeLastWeek}>
+                    Retirer cette semaine
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="week">
+              <span />
+              {MEALS.map((meal) => (
+                <span key={meal} className="week-head">
+                  {meal}
+                </span>
+              ))}
+              {DAYS.map((day) => (
+                <WeekRow key={day} day={day}>
+                  {MEALS.map((meal) => {
+                    const key = slotKey(week, day, meal);
+                    const entry = plan[key];
+                    return (
+                      <Slot
+                        key={key}
+                        label={`${day} ${meal.toLowerCase()}${weeks > 1 ? `, semaine ${week}` : ""}`}
+                        entry={entry}
+                        dish={entry && "dishId" in entry ? byId.get(entry.dishId) : undefined}
+                        selectedId={selectedId}
+                        onChange={(next) => {
+                          setSlot(key, next);
+                          if (next && "dishId" in next) setSelectedId(null);
+                        }}
+                      />
+                    );
+                  })}
+                </WeekRow>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {weeks < MAX_WEEKS && (
+          <button className="secondary wide add-week" onClick={() => onPlanChange(plan, weeks + 1)}>
+            + Ajouter une semaine
+          </button>
+        )}
       </section>
 
       <ManualDishForm onSave={onSave} />
@@ -126,6 +156,7 @@ export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Pr
         <DishCard
           key={dish.id}
           dish={dish}
+          onEdit={(patch) => onSave(dish, patch)}
           actions={
             <>
               <LikeButton dish={dish} onToggle={() => onSave(dish, { liked: !dish.liked })} />
@@ -265,6 +296,7 @@ function ManualDishForm({ onSave }: { onSave: Props["onSave"] }) {
       liked: false,
       planned: true,
       createdAt: new Date().toISOString(),
+      sources: [],
     });
     setSaving(false);
     if (saved) {

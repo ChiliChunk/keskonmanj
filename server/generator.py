@@ -6,6 +6,7 @@ import anthropic
 from pydantic import BaseModel
 
 MODEL = "claude-sonnet-5-5"
+MAX_COUNT = 5
 
 CUISINES = [
     "française de bistrot",
@@ -43,6 +44,10 @@ class Recipe(BaseModel):
     steps: list[str]
 
 
+class Menu(BaseModel):
+    recipes: list[Recipe]
+
+
 SYSTEM = (
     "Tu proposes des plats faits maison pour la semaine d'un particulier en France. "
     "Ingrédients trouvables en supermarché, quantités pour le nombre de personnes demandé. "
@@ -50,13 +55,14 @@ SYSTEM = (
     "(ex. « oignon », « filet de poulet », « riz basmati ») pour pouvoir être "
     "regroupé dans une liste de courses ; la quantité va dans le champ dédié "
     "(ex. « 2 », « 300 g », « 1 c. à soupe »). Étapes courtes et concrètes. "
-    "Réponds en français."
+    "Le nom du plat est un nom de recette courant, qu'on retrouverait en le "
+    "cherchant sur un site de recettes. Réponds en français."
 )
 
 _client: anthropic.Anthropic | None = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def get_client() -> anthropic.Anthropic:
     # Créé à la demande : la clé n'est lue depuis .env qu'au démarrage du serveur.
     global _client
     if _client is None:
@@ -64,19 +70,36 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
-def generate_dish(
+def api_errors(error: Exception) -> GenerationError:
+    if isinstance(error, anthropic.AuthenticationError):
+        return GenerationError("Clé API Anthropic refusée (server/.env).")
+    if isinstance(error, anthropic.RateLimitError):
+        return GenerationError("Trop de requêtes, réessaie dans un instant.")
+    if isinstance(error, anthropic.APIStatusError):
+        return GenerationError(f"Erreur API Anthropic ({error.status_code}) : {error.message}")
+    return GenerationError("Impossible de joindre l'API Anthropic.")
+
+
+def generate_dishes(
+    count: int,
     tags: list[str],
     note: str,
     servings: int,
     avoid: list[str],
     ingredients: list[str],
     only_ingredients: bool,
-) -> dict:
-    lines = [f"Propose un plat pour {servings} personne(s)."]
+) -> list[dict]:
+    count = max(1, min(MAX_COUNT, count))
+    # Tous les plats dans une seule réponse plutôt qu'en appels parallèles :
+    # le modèle voit ce qu'il a déjà proposé et varie de lui-même.
+    if count == 1:
+        lines = [f"Propose un plat pour {servings} personne(s)."]
+    else:
+        lines = [f"Propose {count} plats bien différents les uns des autres, pour {servings} personne(s) chacun."]
     if tags:
         lines.append("Critères : " + ", ".join(tags) + ".")
     if ingredients:
-        lines.append("Le plat doit utiliser ces ingrédients que j'ai déjà : " + ", ".join(ingredients) + ".")
+        lines.append("Les plats doivent utiliser ces ingrédients que j'ai déjà : " + ", ".join(ingredients) + ".")
         if only_ingredients:
             lines.append(
                 "N'ajoute aucun autre ingrédient, sauf les basiques de placard "
@@ -92,40 +115,37 @@ def generate_dish(
         )
     if not note.strip():
         # À critères identiques, le modèle retombe vite sur les mêmes
-        # classiques : une piste tirée au hasard suffit à varier.
-        lines.append(f"Pour varier, tu peux t'inspirer d'une cuisine {random.choice(CUISINES)}.")
+        # classiques : des pistes tirées au hasard suffisent à varier.
+        picks = random.sample(CUISINES, k=min(count + 1, len(CUISINES)))
+        lines.append("Pour varier, tu peux t'inspirer de ces cuisines : " + ", ".join(picks) + ".")
 
     try:
-        response = _get_client().beta.messages.parse(
+        response = get_client().beta.messages.parse(
             model=MODEL,
             max_tokens=16000,
             system=SYSTEM,
             output_config={"effort": "low"},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            output_format=Recipe,
+            output_format=Menu,
             messages=[{"role": "user", "content": "\n".join(lines)}],
         )
-    except anthropic.AuthenticationError as error:
-        raise GenerationError("Clé API Anthropic refusée (server/.env).") from error
-    except anthropic.RateLimitError as error:
-        raise GenerationError("Trop de requêtes, réessaie dans un instant.") from error
-    except anthropic.APIStatusError as error:
-        raise GenerationError(f"Erreur API Anthropic ({error.status_code}) : {error.message}") from error
-    except anthropic.APIConnectionError as error:
-        raise GenerationError("Impossible de joindre l'API Anthropic.") from error
+    except anthropic.APIError as error:
+        raise api_errors(error) from error
 
     if response.stop_reason == "refusal" or response.parsed_output is None:
         raise GenerationError("Claude n'a pas renvoyé de recette exploitable, réessaie.")
 
-    recipe = response.parsed_output
-    return {
-        "name": recipe.name,
-        "description": recipe.description,
-        "tags": tags,
-        "servings": servings,
-        "prepMinutes": recipe.prep_minutes,
-        "ingredients": [i.model_dump() for i in recipe.ingredients],
-        "steps": recipe.steps,
-        "source": "llm",
-    }
+    return [
+        {
+            "name": recipe.name,
+            "description": recipe.description,
+            "tags": tags,
+            "servings": servings,
+            "prepMinutes": recipe.prep_minutes,
+            "ingredients": [i.model_dump() for i in recipe.ingredients],
+            "steps": recipe.steps,
+            "source": "llm",
+        }
+        for recipe in response.parsed_output.recipes[:count]
+    ]

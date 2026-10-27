@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteDish, fetchState, saveChecked, saveDish, savePantry, savePlan } from "./data/api";
+import {
+  deleteDish,
+  fetchState,
+  saveChecked,
+  saveCustomTags,
+  saveDish,
+  savePantry,
+  savePlan,
+} from "./data/api";
 import type { Dish, DishDraft, WeekPlan } from "./domain/types";
 import { GenerateView } from "./ui/GenerateView";
 import { LibraryView } from "./ui/LibraryView";
@@ -22,6 +30,8 @@ export function App() {
   const [checked, setChecked] = useState<string[]>([]);
   const [plan, setPlan] = useState<WeekPlan>({});
   const [pantry, setPantry] = useState<string[]>([]);
+  const [weeks, setWeeks] = useState(1);
+  const [customTags, setCustomTags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,6 +41,8 @@ export function App() {
         setChecked(state.checked);
         setPlan(state.plan);
         setPantry(state.pantry);
+        setWeeks(state.weeks);
+        setCustomTags(state.customTags);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
@@ -80,9 +92,15 @@ export function App() {
     saveChecked(next).catch((e: Error) => setError(e.message));
   }, []);
 
-  const updatePlan = useCallback((next: WeekPlan) => {
+  const updatePlan = useCallback((next: WeekPlan, nextWeeks: number) => {
     setPlan(next);
-    savePlan(next).catch((e: Error) => setError(e.message));
+    setWeeks(nextWeeks);
+    savePlan(next, nextWeeks).catch((e: Error) => setError(e.message));
+  }, []);
+
+  const updateCustomTags = useCallback((next: string[]) => {
+    setCustomTags(next);
+    saveCustomTags(next).catch((e: Error) => setError(e.message));
   }, []);
 
   const updatePantry = useCallback((next: string[]) => {
@@ -134,12 +152,19 @@ export function App() {
           cours. */}
       <main>
         <div hidden={tab !== "generate"}>
-          <GenerateView dishes={dishes} onSave={upsert} onError={setError} />
+          <GenerateView
+            dishes={dishes}
+            onSave={upsert}
+            onError={setError}
+            customTags={customTags}
+            onCustomTagsChange={updateCustomTags}
+          />
         </div>
         <div hidden={tab !== "planned"}>
           <PlannedView
             dishes={planned}
             plan={plan}
+            weeks={weeks}
             onPlanChange={updatePlan}
             onSave={upsert}
             onDelete={remove}

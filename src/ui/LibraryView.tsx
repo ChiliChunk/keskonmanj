@@ -37,6 +37,7 @@ export function LibraryView({ dishes, onSave }: Props) {
         <DishCard
           key={dish.id}
           dish={dish}
+          onEdit={(patch) => onSave(dish, patch)}
           actions={
             <>
               <LikeButton dish={dish} onToggle={() => onSave(dish, { liked: !dish.liked })} />

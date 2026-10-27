@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 import generator
+import sources
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
@@ -32,6 +33,7 @@ _lock = threading.Lock()
 
 
 DEFAULT_PANTRY = ["sel", "poivre", "huile", "eau"]
+MAX_WEEKS = 8
 
 
 def load_data() -> dict:
@@ -42,6 +44,10 @@ def load_data() -> dict:
     data.setdefault("checked", [])
     data.setdefault("plan", {})
     data.setdefault("pantry", list(DEFAULT_PANTRY))
+    data.setdefault("weeks", 1)
+    data.setdefault("customTags", [])
+    for dish in data["dishes"]:
+        dish.setdefault("sources", [])
     return data
 
 
@@ -88,7 +94,20 @@ def clean_dish(raw: dict, dish_id: str) -> dict:
         "liked": bool(raw.get("liked")),
         "planned": bool(raw.get("planned")),
         "createdAt": str(raw.get("createdAt", "")),
+        "sources": clean_sources(raw.get("sources") or []),
     }
+
+
+def clean_sources(raw: list) -> list[dict]:
+    def http(value: object) -> str | None:
+        text = str(value or "")
+        return text if text.startswith(("http://", "https://")) else None
+
+    return [
+        {"title": str(s.get("title") or s["url"]), "url": http(s.get("url")), "image": http(s.get("image"))}
+        for s in raw
+        if isinstance(s, dict) and http(s.get("url"))
+    ]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -129,7 +148,8 @@ class Handler(BaseHTTPRequestHandler):
                 # comptent aussi : sinon « Autre idée » renvoie souvent le
                 # même plat pour les mêmes critères.
                 known += [str(n) for n in body.get("recent", [])][-20:]
-                dish = generator.generate_dish(
+                dishes = generator.generate_dishes(
+                    count=int(body.get("count") or 1),
                     tags=[str(t) for t in body.get("tags", [])],
                     note=str(body.get("note", "")),
                     servings=int(body.get("servings") or 2),
@@ -137,7 +157,13 @@ class Handler(BaseHTTPRequestHandler):
                     ingredients=[str(i).strip() for i in body.get("ingredients", []) if str(i).strip()],
                     only_ingredients=bool(body.get("onlyIngredients")),
                 )
-                self._send_json(200, clean_dish(dish, uuid.uuid4().hex))
+                self._send_json(200, {"dishes": [clean_dish(d, uuid.uuid4().hex) for d in dishes]})
+                return
+
+            if segments == ["api", "sources"]:
+                # Appel séparé de la génération : les recettes s'affichent tout
+                # de suite, photos et liens arrivent quelques secondes après.
+                self._send_json(200, {"sources": sources.find_sources(str(body.get("name", "")))})
                 return
 
             if segments == ["api", "dishes"]:
@@ -169,8 +195,17 @@ class Handler(BaseHTTPRequestHandler):
                 with _lock:
                     data = load_data()
                     data["plan"] = clean_plan(body.get("plan", {}))
+                    data["weeks"] = max(1, min(MAX_WEEKS, int(body.get("weeks") or data["weeks"])))
                     save_data(data)
-                self._send_json(200, {"plan": data["plan"]})
+                self._send_json(200, {"plan": data["plan"], "weeks": data["weeks"]})
+                return
+
+            if segments == ["api", "tags"]:
+                with _lock:
+                    data = load_data()
+                    data["customTags"] = [str(t).strip() for t in body.get("customTags", []) if str(t).strip()]
+                    save_data(data)
+                self._send_json(200, {"customTags": data["customTags"]})
                 return
 
             if segments == ["api", "pantry"]:

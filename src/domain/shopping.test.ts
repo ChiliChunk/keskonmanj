@@ -16,6 +16,7 @@ function dish(name: string, planned: boolean, ingredients: Dish["ingredients"]):
     liked: false,
     planned,
     createdAt: "",
+    sources: [],
   };
 }
 

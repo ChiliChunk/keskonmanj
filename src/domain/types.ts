@@ -16,6 +16,14 @@ export interface Dish {
   liked: boolean;
   planned: boolean;
   createdAt: string;
+  /** Recettes trouvées sur le web qui ressemblent au plat (photos, liens). */
+  sources: Source[];
+}
+
+export interface Source {
+  title: string;
+  url: string;
+  image: string | null;
 }
 
 /** Plat pas encore enregistré : le serveur lui attribue son id. */
@@ -25,7 +33,7 @@ export type DishDraft = Omit<Dish, "id"> & { id?: string };
     (« restes », « resto avec Paul »…). */
 export type PlanEntry = { dishId: string } | { text: string };
 
-/** Clé de créneau : `${jour}-${repas}`, voir `slotKey`. */
+/** Clé de créneau, voir `slotKey`. */
 export type WeekPlan = Record<string, PlanEntry>;
 
 export interface AppState {
@@ -35,25 +43,20 @@ export interface AppState {
   plan: WeekPlan;
   /** Ingrédients toujours à la maison, masqués de la liste de courses. */
   pantry: string[];
+  /** Nombre de semaines affichées dans le menu (au moins 1). */
+  weeks: number;
+  /** Tags ajoutés par l'utilisateur, en plus de `TAGS`. */
+  customTags: string[];
 }
 
 export const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] as const;
 export const MEALS = ["Midi", "Soir"] as const;
 
-export function slotKey(day: string, meal: string): string {
-  return `${day}-${meal}`.toLowerCase();
+/** La première semaine garde des clés sans préfixe (« lundi-midi ») : c'est
+    le format d'avant l'ajout des semaines supplémentaires, déjà enregistré. */
+export function slotKey(week: number, day: string, meal: string): string {
+  const base = `${day}-${meal}`.toLowerCase();
+  return week === 1 ? base : `s${week}-${base}`;
 }
 
-export const TAGS = [
-  "healthy",
-  "protéiné",
-  "qui cale",
-  "gras / réconfortant",
-  "léger",
-  "végétarien",
-  "rapide",
-  "pas cher",
-  "épicé",
-  "de saison",
-  "batch cooking",
-] as const;
+export const TAGS = ["healthy", "protéiné", "qui cale", "gras / réconfortant", "léger", "végétarien", "rapide"] as const;
