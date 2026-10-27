@@ -8,6 +8,8 @@ Wants=network-online.target
 [Service]
 User=chili
 WorkingDirectory=/home/chili/keskonmanj
+# Sans ça, Python garde ses sorties en tampon et `journalctl` reste vide.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/chili/keskonmanj/server/.venv/bin/python server/main.py
 Restart=on-failure
 
