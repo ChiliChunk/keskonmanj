@@ -5,8 +5,11 @@ Suggestions de plats pour la semaine, générées par Claude (Sonnet 5.5).
 - **Générer** : choisir des tags (healthy, protéiné, qui cale…) et, si on veut,
   les ingrédients qu'on a déjà (éventuellement « uniquement ceux-là »), générer un
   plat, l'aimer ♡ et/ou le **prévoir** pour la semaine.
-- **Prévus** : plats à cuisiner cette semaine, y compris ajoutés à la main.
-- **Courses** : ingrédients de tous les plats prévus, regroupés, à cocher.
+- **Prévus** : plats à cuisiner cette semaine (y compris ajoutés à la main), et
+  la semaine du lundi au dimanche, midi et soir : on y glisse un plat prévu (ou
+  on le touche puis on touche la case, sur téléphone), ou on écrit ce qu'on veut.
+- **Courses** : ingrédients de tous les plats prévus, regroupés, à cocher. Les
+  ingrédients « toujours dans mon placard » (sel, poivre, huile…) sont masqués.
 - **Aimés** : bibliothèque des plats likés, avec recherche.
 
 Même stack que le dashboard : front Vite + React 18 + TypeScript, back Python

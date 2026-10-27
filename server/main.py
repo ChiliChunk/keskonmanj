@@ -31,10 +31,34 @@ DIST_DIR = ROOT.parent / "dist"
 _lock = threading.Lock()
 
 
+DEFAULT_PANTRY = ["sel", "poivre", "huile", "eau"]
+
+
 def load_data() -> dict:
-    if not DATA_FILE.exists():
-        return {"dishes": [], "checked": []}
-    return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    data = json.loads(DATA_FILE.read_text(encoding="utf-8")) if DATA_FILE.exists() else {}
+    # Les clés ajoutées après coup sont complétées ici, pour qu'un data.json
+    # d'une version précédente reste lisible sans migration.
+    data.setdefault("dishes", [])
+    data.setdefault("checked", [])
+    data.setdefault("plan", {})
+    data.setdefault("pantry", list(DEFAULT_PANTRY))
+    return data
+
+
+def forget_in_plan(data: dict, dish_id: str) -> None:
+    data["plan"] = {slot: entry for slot, entry in data["plan"].items() if entry.get("dishId") != dish_id}
+
+
+def clean_plan(raw: dict) -> dict:
+    plan = {}
+    for slot, entry in raw.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("dishId"):
+            plan[str(slot)] = {"dishId": str(entry["dishId"])}
+        elif str(entry.get("text", "")).strip():
+            plan[str(slot)] = {"text": str(entry["text"]).strip()}
+    return plan
 
 
 def save_data(data: dict) -> None:
@@ -101,6 +125,10 @@ class Handler(BaseHTTPRequestHandler):
             if segments == ["api", "generate"]:
                 with _lock:
                     known = [d["name"] for d in load_data()["dishes"]]
+                # Les plats déjà proposés puis écartés pendant la session
+                # comptent aussi : sinon « Autre idée » renvoie souvent le
+                # même plat pour les mêmes critères.
+                known += [str(n) for n in body.get("recent", [])][-20:]
                 dish = generator.generate_dish(
                     tags=[str(t) for t in body.get("tags", [])],
                     note=str(body.get("note", "")),
@@ -123,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
                     others = [d for d in data["dishes"] if d["id"] != dish_id]
                     # Un plat ni aimé ni prévu n'a plus de raison d'être gardé.
                     data["dishes"] = others + ([dish] if dish["liked"] or dish["planned"] else [])
+                    if not dish["planned"]:
+                        forget_in_plan(data, dish_id)
                     save_data(data)
                 self._send_json(200, dish)
                 return
@@ -133,6 +163,22 @@ class Handler(BaseHTTPRequestHandler):
                     data["checked"] = [str(c) for c in body.get("checked", [])]
                     save_data(data)
                 self._send_json(200, {"checked": data["checked"]})
+                return
+
+            if segments == ["api", "plan"]:
+                with _lock:
+                    data = load_data()
+                    data["plan"] = clean_plan(body.get("plan", {}))
+                    save_data(data)
+                self._send_json(200, {"plan": data["plan"]})
+                return
+
+            if segments == ["api", "pantry"]:
+                with _lock:
+                    data = load_data()
+                    data["pantry"] = [str(p).strip() for p in body.get("pantry", []) if str(p).strip()]
+                    save_data(data)
+                self._send_json(200, {"pantry": data["pantry"]})
                 return
 
             self._send_json(404, {"error": "Route inconnue."})
@@ -147,6 +193,7 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 data = load_data()
                 data["dishes"] = [d for d in data["dishes"] if d["id"] != segments[2]]
+                forget_in_plan(data, segments[2])
                 save_data(data)
             self._send_json(200, {"ok": True})
             return

@@ -1,9 +1,29 @@
 from __future__ import annotations
 
+import random
+
 import anthropic
 from pydantic import BaseModel
 
 MODEL = "claude-sonnet-5-5"
+
+CUISINES = [
+    "française de bistrot",
+    "française de grand-mère",
+    "italienne",
+    "méditerranéenne",
+    "libanaise",
+    "marocaine",
+    "indienne",
+    "thaïe",
+    "japonaise",
+    "coréenne",
+    "mexicaine",
+    "espagnole",
+    "grecque",
+    "vietnamienne",
+    "américaine",
+]
 
 
 class GenerationError(Exception):
@@ -66,7 +86,14 @@ def generate_dish(
         lines.append("Précision : " + note.strip())
     if avoid:
         # Évite de reproposer ce qui est déjà dans la bibliothèque ou au menu.
-        lines.append("Évite ces plats déjà connus : " + "; ".join(avoid[-60:]) + ".")
+        lines.append(
+            "Propose quelque chose de vraiment différent de ces plats déjà connus "
+            "ou déjà proposés : " + "; ".join(avoid[-60:]) + "."
+        )
+    if not note.strip():
+        # À critères identiques, le modèle retombe vite sur les mêmes
+        # classiques : une piste tirée au hasard suffit à varier.
+        lines.append(f"Pour varier, tu peux t'inspirer d'une cuisine {random.choice(CUISINES)}.")
 
     try:
         response = _get_client().beta.messages.parse(

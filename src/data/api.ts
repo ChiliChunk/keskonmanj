@@ -1,4 +1,4 @@
-import type { AppState, Dish, DishDraft } from "../domain/types";
+import type { AppState, Dish, DishDraft, WeekPlan } from "../domain/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -22,6 +22,8 @@ export function generateDish(params: {
   servings: number;
   ingredients: string[];
   onlyIngredients: boolean;
+  /** Plats déjà proposés pendant la session, à ne pas resservir. */
+  recent: string[];
 }): Promise<Dish> {
   return request("/api/generate", { method: "POST", body: JSON.stringify(params) });
 }
@@ -38,4 +40,12 @@ export function deleteDish(id: string): Promise<unknown> {
 
 export function saveChecked(checked: string[]): Promise<unknown> {
   return request("/api/checked", { method: "POST", body: JSON.stringify({ checked }) });
+}
+
+export function savePlan(plan: WeekPlan): Promise<unknown> {
+  return request("/api/plan", { method: "POST", body: JSON.stringify({ plan }) });
+}
+
+export function savePantry(pantry: string[]): Promise<unknown> {
+  return request("/api/pantry", { method: "POST", body: JSON.stringify({ pantry }) });
 }

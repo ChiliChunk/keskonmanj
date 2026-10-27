@@ -16,6 +16,7 @@ export function GenerateView({ dishes, onSave, onError }: Props) {
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [ingredientInput, setIngredientInput] = useState("");
   const [onlyIngredients, setOnlyIngredients] = useState(false);
+  const [recent, setRecent] = useState<string[]>([]);
   const [generated, setGenerated] = useState<Dish | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,15 +51,16 @@ export function GenerateView({ dishes, onSave, onError }: Props) {
     if (pending) addIngredients(pending);
     setLoading(true);
     try {
-      setGenerated(
-        await generateDish({
-          tags,
-          note,
-          servings,
-          ingredients: allIngredients,
-          onlyIngredients: onlyIngredients && allIngredients.length > 0,
-        }),
-      );
+      const dish = await generateDish({
+        tags,
+        note,
+        servings,
+        ingredients: allIngredients,
+        onlyIngredients: onlyIngredients && allIngredients.length > 0,
+        recent,
+      });
+      setGenerated(dish);
+      setRecent((previous) => [...previous, dish.name]);
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -161,22 +163,26 @@ export function GenerateView({ dishes, onSave, onError }: Props) {
       </section>
 
       {current && (
-        <DishCard
-          key={current.id}
-          dish={current}
-          defaultOpen
-          actions={
-            <>
-              <LikeButton dish={current} onToggle={() => update({ liked: !current.liked })} />
-              <button
-                className={current.planned ? "secondary on" : "secondary"}
-                onClick={() => update({ planned: !current.planned })}
-              >
-                {current.planned ? "✓ Prévu" : "Prévoir"}
-              </button>
-            </>
-          }
-        />
+        // Grisé pendant la génération suivante, pour qu'on voie que « Autre
+        // idée » travaille.
+        <div className={loading ? "fading" : undefined}>
+          <DishCard
+            key={current.id}
+            dish={current}
+            defaultOpen
+            actions={
+              <>
+                <LikeButton dish={current} onToggle={() => update({ liked: !current.liked })} />
+                <button
+                  className={current.planned ? "secondary on" : "secondary"}
+                  onClick={() => update({ planned: !current.planned })}
+                >
+                  {current.planned ? "✓ Prévu" : "Prévoir"}
+                </button>
+              </>
+            }
+          />
+        </div>
       )}
     </div>
   );

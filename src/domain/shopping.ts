@@ -39,6 +39,16 @@ export function buildShoppingList(dishes: Dish[]): ShoppingLine[] {
   return [...lines.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
 }
 
+/** Un élément du placard couvre aussi ses variantes : « huile » masque
+    « huile d'olive », mais « sel » ne masque pas « selle d'agneau » ni
+    « poivre » le « poivron ». */
+export function isInPantry(key: string, pantry: string[]): boolean {
+  return pantry.some((item) => {
+    const pantryKey = ingredientKey(item);
+    return pantryKey !== "" && (key === pantryKey || key.startsWith(pantryKey + " "));
+  });
+}
+
 /** Saisie libre d'un plat manuel : un ingrédient par ligne, quantité
     optionnelle après « : » (« riz : 200 g »). */
 export function parseIngredientLines(text: string): Dish["ingredients"] {

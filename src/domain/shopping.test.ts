@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildShoppingList, ingredientKey, parseIngredientLines } from "./shopping";
+import { buildShoppingList, ingredientKey, isInPantry, parseIngredientLines } from "./shopping";
 import type { Dish } from "./types";
 
 function dish(name: string, planned: boolean, ingredients: Dish["ingredients"]): Dish {
@@ -47,6 +47,21 @@ describe("buildShoppingList", () => {
       { dish: "Curry", quantity: "2" },
       { dish: "Soupe", quantity: "1" },
     ]);
+  });
+});
+
+describe("isInPantry", () => {
+  const pantry = ["sel", "Poivre", "huile"];
+
+  it("masque l'élément et ses variantes", () => {
+    expect(isInPantry(ingredientKey("sel"), pantry)).toBe(true);
+    expect(isInPantry(ingredientKey("Huile d'olive"), pantry)).toBe(true);
+    expect(isInPantry(ingredientKey("poivre noir"), pantry)).toBe(true);
+  });
+
+  it("ne masque pas un mot qui commence pareil", () => {
+    expect(isInPantry(ingredientKey("poivron rouge"), pantry)).toBe(false);
+    expect(isInPantry(ingredientKey("selle d'agneau"), pantry)).toBe(false);
   });
 });
 

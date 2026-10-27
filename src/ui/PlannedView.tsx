@@ -1,44 +1,243 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { parseIngredientLines } from "../domain/shopping";
-import type { Dish, DishDraft } from "../domain/types";
+import {
+  DAYS,
+  MEALS,
+  slotKey,
+  type Dish,
+  type DishDraft,
+  type PlanEntry,
+  type WeekPlan,
+} from "../domain/types";
 import { DishCard, LikeButton } from "./DishCard";
+
+const DRAG_TYPE = "application/x-keskonmanj-dish";
 
 interface Props {
   dishes: Dish[];
+  plan: WeekPlan;
+  onPlanChange: (plan: WeekPlan) => void;
   onSave: (dish: DishDraft, patch?: Partial<Dish>) => Promise<Dish | null>;
   onDelete: (id: string) => Promise<void>;
 }
 
-export function PlannedView({ dishes, onSave, onDelete }: Props) {
+export function PlannedView({ dishes, plan, onPlanChange, onSave, onDelete }: Props) {
+  // Le glisser-déposer HTML ne marche pas au doigt sur téléphone : on peut
+  // aussi toucher un plat pour le sélectionner, puis toucher un créneau.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const byId = new Map(dishes.map((dish) => [dish.id, dish]));
+
+  function setSlot(key: string, entry: PlanEntry | null) {
+    const next = { ...plan };
+    if (entry) next[key] = entry;
+    else delete next[key];
+    onPlanChange(next);
+  }
+
+  function placements(dishId: string): number {
+    return Object.values(plan).filter((entry) => "dishId" in entry && entry.dishId === dishId).length;
+  }
+
   return (
     <div className="stack">
+      <section className="card">
+        <div className="row between">
+          <h2>La semaine</h2>
+          {Object.keys(plan).length > 0 && (
+            <button
+              className="link"
+              onClick={() => window.confirm("Vider tous les créneaux de la semaine ?") && onPlanChange({})}
+            >
+              Vider la semaine
+            </button>
+          )}
+        </div>
+
+        {dishes.length > 0 ? (
+          <>
+            <p className="hint">
+              Glisse un plat dans un créneau (ou touche-le, puis touche le créneau). Tu peux aussi
+              écrire ce que tu veux dans une case.
+            </p>
+            <ul className="chips palette">
+              {dishes.map((dish) => {
+                const count = placements(dish.id);
+                return (
+                  <li key={dish.id}>
+                    <button
+                      className={selectedId === dish.id ? "chip dish-chip selected" : "chip dish-chip"}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DRAG_TYPE, dish.id);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => setSelectedId((id) => (id === dish.id ? null : dish.id))}
+                      aria-pressed={selectedId === dish.id}
+                    >
+                      {dish.name}
+                      {count > 0 && <span className="badge">×{count}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <p className="hint">
+            Les plats prévus apparaîtront ici pour les placer dans la semaine. En attendant, tu peux
+            écrire directement dans les cases.
+          </p>
+        )}
+
+        <div className="week">
+          <span />
+          {MEALS.map((meal) => (
+            <span key={meal} className="week-head">
+              {meal}
+            </span>
+          ))}
+          {DAYS.map((day) => (
+            <WeekRow key={day} day={day}>
+              {MEALS.map((meal) => {
+                const key = slotKey(day, meal);
+                const entry = plan[key];
+                return (
+                  <Slot
+                    key={key}
+                    label={`${day} ${meal.toLowerCase()}`}
+                    entry={entry}
+                    dish={entry && "dishId" in entry ? byId.get(entry.dishId) : undefined}
+                    selectedId={selectedId}
+                    onChange={(next) => {
+                      setSlot(key, next);
+                      if (next && "dishId" in next) setSelectedId(null);
+                    }}
+                  />
+                );
+              })}
+            </WeekRow>
+          ))}
+        </div>
+      </section>
+
       <ManualDishForm onSave={onSave} />
 
-      {dishes.length === 0 ? (
-        <p className="empty">Aucun plat prévu cette semaine. Génère-en un ou ajoute-le à la main.</p>
+      {dishes.map((dish) => (
+        <DishCard
+          key={dish.id}
+          dish={dish}
+          actions={
+            <>
+              <LikeButton dish={dish} onToggle={() => onSave(dish, { liked: !dish.liked })} />
+              <button
+                className="secondary"
+                title="Retirer des plats prévus"
+                onClick={() =>
+                  // Un plat non aimé n'existe que par sa présence au menu :
+                  // on le supprime franchement.
+                  dish.liked ? onSave(dish, { planned: false }) : onDelete(dish.id)
+                }
+              >
+                Fait / retirer
+              </button>
+            </>
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function WeekRow({ day, children }: { day: string; children: ReactNode }) {
+  return (
+    <>
+      <span className="week-day">
+        <span className="long">{day}</span>
+        <span className="short">{day.slice(0, 3)}</span>
+      </span>
+      {children}
+    </>
+  );
+}
+
+interface SlotProps {
+  label: string;
+  entry: PlanEntry | undefined;
+  /** Plat du créneau, absent s'il n'est plus prévu (le créneau est alors vide). */
+  dish: Dish | undefined;
+  selectedId: string | null;
+  onChange: (entry: PlanEntry | null) => void;
+}
+
+function Slot({ label, entry, dish, selectedId, onChange }: SlotProps) {
+  const savedText = entry && "text" in entry ? entry.text : "";
+  const [text, setText] = useState(savedText);
+  const [over, setOver] = useState(false);
+
+  useEffect(() => setText(savedText), [savedText]);
+
+  function commitText() {
+    const value = text.trim();
+    if (value === savedText) return;
+    onChange(value ? { text: value } : null);
+  }
+
+  function onDrop(event: DragEvent) {
+    event.preventDefault();
+    setOver(false);
+    const dishId = event.dataTransfer.getData(DRAG_TYPE);
+    if (dishId) onChange({ dishId });
+  }
+
+  const classes = ["slot", over && "over", selectedId && "armed", dish && "filled"].filter(Boolean).join(" ");
+
+  return (
+    <div
+      className={classes}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={onDrop}
+      // Avec un plat sélectionné, toucher la case le place au lieu
+      // d'ouvrir le clavier dans le champ texte.
+      onMouseDown={(e) => selectedId && e.preventDefault()}
+      onClick={() => selectedId && onChange({ dishId: selectedId })}
+    >
+      {dish ? (
+        <span
+          className="slot-dish"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData(DRAG_TYPE, dish.id);
+            e.dataTransfer.effectAllowed = "copy";
+          }}
+        >
+          <span className="slot-name">{dish.name}</span>
+          <button
+            className="slot-clear"
+            aria-label={`Vider ${label}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(null);
+            }}
+          >
+            ×
+          </button>
+        </span>
       ) : (
-        dishes.map((dish) => (
-          <DishCard
-            key={dish.id}
-            dish={dish}
-            actions={
-              <>
-                <LikeButton dish={dish} onToggle={() => onSave(dish, { liked: !dish.liked })} />
-                <button
-                  className="secondary"
-                  title="Retirer des plats prévus"
-                  onClick={() =>
-                    // Un plat manuel non aimé n'existe que par sa présence au
-                    // menu : on le supprime franchement.
-                    dish.liked ? onSave(dish, { planned: false }) : onDelete(dish.id)
-                  }
-                >
-                  Fait / retirer
-                </button>
-              </>
-            }
-          />
-        ))
+        <input
+          aria-label={label}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commitText}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          placeholder="—"
+          readOnly={selectedId !== null}
+        />
       )}
     </div>
   );
@@ -78,7 +277,7 @@ function ManualDishForm({ onSave }: { onSave: Props["onSave"] }) {
   if (!open) {
     return (
       <button className="secondary wide" onClick={() => setOpen(true)}>
-        + Ajouter un plat à la main
+        + Ajouter un plat prévu à la main
       </button>
     );
   }
