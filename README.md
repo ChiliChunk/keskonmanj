@@ -2,7 +2,8 @@
 
 Suggestions de plats pour la semaine, générées par Claude (Sonnet 5.5).
 
-- **Générer** : choisir des tags (healthy, protéiné, qui cale…), générer un
+- **Générer** : choisir des tags (healthy, protéiné, qui cale…) et, si on veut,
+  les ingrédients qu'on a déjà (éventuellement « uniquement ceux-là »), générer un
   plat, l'aimer ♡ et/ou le **prévoir** pour la semaine.
 - **Prévus** : plats à cuisiner cette semaine, y compris ajoutés à la main.
 - **Courses** : ingrédients de tous les plats prévus, regroupés, à cocher.

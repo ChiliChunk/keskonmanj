@@ -106,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
                     note=str(body.get("note", "")),
                     servings=int(body.get("servings") or 2),
                     avoid=known,
+                    ingredients=[str(i).strip() for i in body.get("ingredients", []) if str(i).strip()],
+                    only_ingredients=bool(body.get("onlyIngredients")),
                 )
                 self._send_json(200, clean_dish(dish, uuid.uuid4().hex))
                 return

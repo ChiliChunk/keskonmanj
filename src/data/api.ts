@@ -20,6 +20,8 @@ export function generateDish(params: {
   tags: string[];
   note: string;
   servings: number;
+  ingredients: string[];
+  onlyIngredients: boolean;
 }): Promise<Dish> {
   return request("/api/generate", { method: "POST", body: JSON.stringify(params) });
 }

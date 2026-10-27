@@ -79,7 +79,10 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Keskonmanj</h1>
+        <h1 className="brand">
+          <img src="/icon.png" alt="" />
+          Keskonmanj
+        </h1>
         <nav className="tabs">
           {tabs.map((t) => (
             <button

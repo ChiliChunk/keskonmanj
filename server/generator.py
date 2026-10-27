@@ -44,10 +44,24 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
-def generate_dish(tags: list[str], note: str, servings: int, avoid: list[str]) -> dict:
+def generate_dish(
+    tags: list[str],
+    note: str,
+    servings: int,
+    avoid: list[str],
+    ingredients: list[str],
+    only_ingredients: bool,
+) -> dict:
     lines = [f"Propose un plat pour {servings} personne(s)."]
     if tags:
         lines.append("Critères : " + ", ".join(tags) + ".")
+    if ingredients:
+        lines.append("Le plat doit utiliser ces ingrédients que j'ai déjà : " + ", ".join(ingredients) + ".")
+        if only_ingredients:
+            lines.append(
+                "N'ajoute aucun autre ingrédient, sauf les basiques de placard "
+                "(sel, poivre, huile, beurre, épices courantes, farine, sucre, eau)."
+            )
     if note.strip():
         lines.append("Précision : " + note.strip())
     if avoid:
